@@ -1,19 +1,18 @@
 from typing import Any, List, Callable
-import cv2
 import threading
 from gfpgan.utils import GFPGANer
 
 import facefusion.globals
-import facefusion.processors.frame.core as frame_processors
-from facefusion import wording
+from facefusion import wording, utilities
 from facefusion.core import update_status
 from facefusion.face_analyser import get_many_faces
-from facefusion.typing import Frame, Face
+from facefusion.typing import Frame, Face, ProcessMode
 from facefusion.utilities import conditional_download, resolve_relative_path, is_image, is_video
+from facefusion.vision import read_image, read_static_image, write_image
 
 FRAME_PROCESSOR = None
-THREAD_SEMAPHORE = threading.Semaphore()
-THREAD_LOCK = threading.Lock()
+THREAD_SEMAPHORE : threading.Semaphore = threading.Semaphore()
+THREAD_LOCK : threading.Lock = threading.Lock()
 NAME = 'FACEFUSION.FRAME_PROCESSOR.FACE_ENHANCER'
 
 
@@ -26,7 +25,7 @@ def get_frame_processor() -> Any:
 			FRAME_PROCESSOR = GFPGANer(
 				model_path = model_path,
 				upscale = 1,
-				device = frame_processors.get_device()
+				device = utilities.get_device(facefusion.globals.execution_providers)
 			)
 	return FRAME_PROCESSOR
 
@@ -39,19 +38,23 @@ def clear_frame_processor() -> None:
 
 def pre_check() -> bool:
 	download_directory_path = resolve_relative_path('../.assets/models')
-	conditional_download(download_directory_path, ['https://github.com/facefusion/facefusion-assets/releases/download/models/GFPGANv1.4.pth'])
+	conditional_download(download_directory_path, [ 'https://github.com/facefusion/facefusion-assets/releases/download/models/GFPGANv1.4.pth' ])
 	return True
 
 
-def pre_process() -> bool:
-	if not is_image(facefusion.globals.target_path) and not is_video(facefusion.globals.target_path):
+def pre_process(mode : ProcessMode) -> bool:
+	if mode in [ 'output', 'preview' ] and not is_image(facefusion.globals.target_path) and not is_video(facefusion.globals.target_path):
 		update_status(wording.get('select_image_or_video_target') + wording.get('exclamation_mark'), NAME)
+		return False
+	if mode == 'output' and not facefusion.globals.output_path:
+		update_status(wording.get('select_file_or_directory_output') + wording.get('exclamation_mark'), NAME)
 		return False
 	return True
 
 
 def post_process() -> None:
 	clear_frame_processor()
+	read_static_image.cache_clear()
 
 
 def enhance_face(target_face : Face, temp_frame : Frame) -> Frame:
@@ -81,20 +84,19 @@ def process_frame(source_face : Face, reference_face : Face, temp_frame : Frame)
 	return temp_frame
 
 
-def process_frames(source_path : str, temp_frame_paths : List[str], update: Callable[[], None]) -> None:
+def process_frames(source_path : str, temp_frame_paths : List[str], update_progress: Callable[[], None]) -> None:
 	for temp_frame_path in temp_frame_paths:
-		temp_frame = cv2.imread(temp_frame_path)
+		temp_frame = read_image(temp_frame_path)
 		result_frame = process_frame(None, None, temp_frame)
-		cv2.imwrite(temp_frame_path, result_frame)
-		if update:
-			update()
+		write_image(temp_frame_path, result_frame)
+		update_progress()
 
 
 def process_image(source_path : str, target_path : str, output_path : str) -> None:
-	target_frame = cv2.imread(target_path)
+	target_frame = read_static_image(target_path)
 	result_frame = process_frame(None, None, target_frame)
-	cv2.imwrite(output_path, result_frame)
+	write_image(output_path, result_frame)
 
 
 def process_video(source_path : str, temp_frame_paths : List[str]) -> None:
-	facefusion.processors.frame.core.process_video(None, temp_frame_paths, process_frames)
+	facefusion.processors.frame.core.multi_process_frames(None, temp_frame_paths, process_frames)

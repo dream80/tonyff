@@ -1,13 +1,11 @@
 from typing import List, Optional, Tuple, Any, Dict
-from time import sleep
 
-import cv2
 import gradio
 
 import facefusion.choices
 import facefusion.globals
 from facefusion import wording
-from facefusion.capturer import get_video_frame
+from facefusion.vision import get_video_frame, normalize_frame_color, read_static_image
 from facefusion.face_analyser import get_many_faces
 from facefusion.face_reference import clear_face_reference
 from facefusion.typing import Frame, FaceRecognition
@@ -25,52 +23,54 @@ def render() -> None:
 	global REFERENCE_FACE_POSITION_GALLERY
 	global REFERENCE_FACE_DISTANCE_SLIDER
 
-	with gradio.Box():
-		reference_face_gallery_args: Dict[str, Any] = {
-			'label': wording.get('reference_face_gallery_label'),
-			'height': 120,
-			'object_fit': 'cover',
-			'columns': 10,
-			'allow_preview': False,
-			'visible': 'reference' in facefusion.globals.face_recognition
-		}
-		if is_image(facefusion.globals.target_path):
-			reference_frame = cv2.imread(facefusion.globals.target_path)
-			reference_face_gallery_args['value'] = extract_gallery_frames(reference_frame)
-		if is_video(facefusion.globals.target_path):
-			reference_frame = get_video_frame(facefusion.globals.target_path, facefusion.globals.reference_frame_number)
-			reference_face_gallery_args['value'] = extract_gallery_frames(reference_frame)
-		FACE_RECOGNITION_DROPDOWN = gradio.Dropdown(
-			label = wording.get('face_recognition_dropdown_label'),
-			choices = facefusion.choices.face_recognition,
-			value = facefusion.globals.face_recognition
-		)
-		REFERENCE_FACE_POSITION_GALLERY = gradio.Gallery(**reference_face_gallery_args)
-		REFERENCE_FACE_DISTANCE_SLIDER = gradio.Slider(
-			label = wording.get('reference_face_distance_slider_label'),
-			value = facefusion.globals.reference_face_distance,
-			maximum = 3,
-			step = 0.05,
-			visible = 'reference' in facefusion.globals.face_recognition
-		)
-		ui.register_component('face_recognition_dropdown', FACE_RECOGNITION_DROPDOWN)
-		ui.register_component('reference_face_position_gallery', REFERENCE_FACE_POSITION_GALLERY)
-		ui.register_component('reference_face_distance_slider', REFERENCE_FACE_DISTANCE_SLIDER)
+	reference_face_gallery_args: Dict[str, Any] =\
+	{
+		'label': wording.get('reference_face_gallery_label'),
+		'height': 120,
+		'object_fit': 'cover',
+		'columns': 10,
+		'allow_preview': False,
+		'visible': 'reference' in facefusion.globals.face_recognition
+	}
+	if is_image(facefusion.globals.target_path):
+		reference_frame = read_static_image(facefusion.globals.target_path)
+		reference_face_gallery_args['value'] = extract_gallery_frames(reference_frame)
+	if is_video(facefusion.globals.target_path):
+		reference_frame = get_video_frame(facefusion.globals.target_path, facefusion.globals.reference_frame_number)
+		reference_face_gallery_args['value'] = extract_gallery_frames(reference_frame)
+	FACE_RECOGNITION_DROPDOWN = gradio.Dropdown(
+		label = wording.get('face_recognition_dropdown_label'),
+		choices = facefusion.choices.face_recognition,
+		value = facefusion.globals.face_recognition
+	)
+	REFERENCE_FACE_POSITION_GALLERY = gradio.Gallery(**reference_face_gallery_args)
+	REFERENCE_FACE_DISTANCE_SLIDER = gradio.Slider(
+		label = wording.get('reference_face_distance_slider_label'),
+		value = facefusion.globals.reference_face_distance,
+		maximum = 3,
+		step = 0.05,
+		visible = 'reference' in facefusion.globals.face_recognition
+	)
+	ui.register_component('face_recognition_dropdown', FACE_RECOGNITION_DROPDOWN)
+	ui.register_component('reference_face_position_gallery', REFERENCE_FACE_POSITION_GALLERY)
+	ui.register_component('reference_face_distance_slider', REFERENCE_FACE_DISTANCE_SLIDER)
 
 
 def listen() -> None:
 	FACE_RECOGNITION_DROPDOWN.select(update_face_recognition, inputs = FACE_RECOGNITION_DROPDOWN, outputs = [ REFERENCE_FACE_POSITION_GALLERY, REFERENCE_FACE_DISTANCE_SLIDER ])
 	REFERENCE_FACE_POSITION_GALLERY.select(clear_and_update_face_reference_position)
 	REFERENCE_FACE_DISTANCE_SLIDER.change(update_reference_face_distance, inputs = REFERENCE_FACE_DISTANCE_SLIDER)
-	update_component_names : List[ComponentName] =\
+	multi_component_names : List[ComponentName] =\
 	[
-		'target_file',
-		'preview_frame_slider'
+		'source_image',
+		'target_image',
+		'target_video'
 	]
-	for component_name in update_component_names:
+	for component_name in multi_component_names:
 		component = ui.get_component(component_name)
 		if component:
-			component.change(update_face_reference_position, outputs = REFERENCE_FACE_POSITION_GALLERY)
+			for method in [ 'upload', 'change', 'clear' ]:
+				getattr(component, method)(update_face_reference_position, outputs = REFERENCE_FACE_POSITION_GALLERY)
 	select_component_names : List[ComponentName] =\
 	[
 		'face_analyser_direction_dropdown',
@@ -81,6 +81,9 @@ def listen() -> None:
 		component = ui.get_component(component_name)
 		if component:
 			component.select(update_face_reference_position, outputs = REFERENCE_FACE_POSITION_GALLERY)
+	preview_frame_slider = ui.get_component('preview_frame_slider')
+	if preview_frame_slider:
+		preview_frame_slider.release(update_face_reference_position, outputs = REFERENCE_FACE_POSITION_GALLERY)
 
 
 def update_face_recognition(face_recognition : FaceRecognition) -> Tuple[Update, Update]:
@@ -98,11 +101,10 @@ def clear_and_update_face_reference_position(event: gradio.SelectData) -> Update
 
 
 def update_face_reference_position(reference_face_position : int = 0) -> Update:
-	sleep(0.2)
 	gallery_frames = []
 	facefusion.globals.reference_face_position = reference_face_position
 	if is_image(facefusion.globals.target_path):
-		reference_frame = cv2.imread(facefusion.globals.target_path)
+		reference_frame = read_static_image(facefusion.globals.target_path)
 		gallery_frames = extract_gallery_frames(reference_frame)
 	if is_video(facefusion.globals.target_path):
 		reference_frame = get_video_frame(facefusion.globals.target_path, facefusion.globals.reference_frame_number)
@@ -129,5 +131,6 @@ def extract_gallery_frames(reference_frame : Frame) -> List[Frame]:
 		end_x = max(0, end_x + padding_x)
 		end_y = max(0, end_y + padding_y)
 		crop_frame = reference_frame[start_y:end_y, start_x:end_x]
-		crop_frames.append(ui.normalize_frame(crop_frame))
+		crop_frame = normalize_frame_color(crop_frame)
+		crop_frames.append(crop_frame)
 	return crop_frames
