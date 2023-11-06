@@ -3,7 +3,7 @@ gradio==3.47.1
 insightface==0.7.3
 numpy==1.24.3
 onnx==1.14.1
-onnxruntime==1.16.0
+onnxruntime-gpu==1.16.0
 opencv-python==4.8.1.78
 opennsfw2==0.10.2
 pillow==10.0.1
