@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 from functools import lru_cache
 import cv2
 
@@ -7,12 +7,12 @@ from facefusion.typing import Frame
 
 def get_video_frame(video_path : str, frame_number : int = 0) -> Optional[Frame]:
 	if video_path:
-		capture = cv2.VideoCapture(video_path)
-		if capture.isOpened():
-			frame_total = capture.get(cv2.CAP_PROP_FRAME_COUNT)
-			capture.set(cv2.CAP_PROP_POS_FRAMES, min(frame_total, frame_number - 1))
-			has_frame, frame = capture.read()
-			capture.release()
+		video_capture = cv2.VideoCapture(video_path)
+		if video_capture.isOpened():
+			frame_total = video_capture.get(cv2.CAP_PROP_FRAME_COUNT)
+			video_capture.set(cv2.CAP_PROP_POS_FRAMES, min(frame_total, frame_number - 1))
+			has_frame, frame = video_capture.read()
+			video_capture.release()
 			if has_frame:
 				return frame
 	return None
@@ -20,18 +20,18 @@ def get_video_frame(video_path : str, frame_number : int = 0) -> Optional[Frame]
 
 def detect_fps(video_path : str) -> Optional[float]:
 	if video_path:
-		capture = cv2.VideoCapture(video_path)
-		if capture.isOpened():
-			return capture.get(cv2.CAP_PROP_FPS)
+		video_capture = cv2.VideoCapture(video_path)
+		if video_capture.isOpened():
+			return video_capture.get(cv2.CAP_PROP_FPS)
 	return None
 
 
 def count_video_frame_total(video_path : str) -> int:
 	if video_path:
-		capture = cv2.VideoCapture(video_path)
-		if capture.isOpened():
-			video_frame_total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
-			capture.release()
+		video_capture = cv2.VideoCapture(video_path)
+		if video_capture.isOpened():
+			video_frame_total = int(video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
+			video_capture.release()
 			return video_frame_total
 	return 0
 
@@ -53,6 +53,14 @@ def resize_frame_dimension(frame : Frame, max_width : int, max_height : int) -> 
 @lru_cache(maxsize = 128)
 def read_static_image(image_path : str) -> Optional[Frame]:
 	return read_image(image_path)
+
+
+def read_static_images(image_paths : List[str]) -> Optional[List[Frame]]:
+	frames = []
+	if image_paths:
+		for image_path in image_paths:
+			frames.append(read_static_image(image_path))
+	return frames
 
 
 def read_image(image_path : str) -> Optional[Frame]:

@@ -5,9 +5,9 @@ import sys
 import gradio
 
 import facefusion.globals
-from facefusion import metadata, wording
+from facefusion import metadata, logger, wording
 from facefusion.uis.typing import Component, ComponentName
-from facefusion.utilities import resolve_relative_path
+from facefusion.filesystem import resolve_relative_path
 
 UI_COMPONENTS: Dict[ComponentName, Component] = {}
 UI_LAYOUT_MODULES : List[ModuleType] = []
@@ -27,7 +27,8 @@ def load_ui_layout_module(ui_layout : str) -> Any:
 		for method_name in UI_LAYOUT_METHODS:
 			if not hasattr(ui_layout_module, method_name):
 				raise NotImplementedError
-	except ModuleNotFoundError:
+	except ModuleNotFoundError as exception:
+		logger.debug(exception.msg, __name__.upper())
 		sys.exit(wording.get('ui_layout_not_loaded').format(ui_layout = ui_layout))
 	except NotImplementedError:
 		sys.exit(wording.get('ui_layout_not_implemented').format(ui_layout = ui_layout))
@@ -44,13 +45,13 @@ def get_ui_layouts_modules(ui_layouts : List[str]) -> List[ModuleType]:
 	return UI_LAYOUT_MODULES
 
 
-def get_ui_component(name: ComponentName) -> Optional[Component]:
+def get_ui_component(name : ComponentName) -> Optional[Component]:
 	if name in UI_COMPONENTS:
 		return UI_COMPONENTS[name]
 	return None
 
 
-def register_ui_component(name: ComponentName, component: Component) -> None:
+def register_ui_component(name : ComponentName, component: Component) -> None:
 	UI_COMPONENTS[name] = component
 
 
